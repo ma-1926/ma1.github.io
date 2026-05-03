@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiletSistem Pro</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --secondary: #10b981;
+            --bg: #f8fafc;
+        }
+
+        body { font-family: sans-serif; margin: 0; background: var(--bg); }
+        
+        /* Naviqasiya Yeniləndi */
+        header { background: var(--primary); color: white; padding: 20px; text-align: center; }
+        nav { 
+            display: flex; 
+            justify-content: center; 
+            gap: 10px; 
+            background: #ffffff; 
+            padding: 15px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        nav button { 
+            cursor: pointer; 
+            border: 2px solid var(--primary); 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            background: white; 
+            color: var(--primary);
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        nav button:hover { background: var(--primary); color: white; }
+
+        .container { max-width: 800px; margin: 30px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .hidden { display: none; }
+        
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .main-btn { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+
+        /* Oturacaqlar */
+        .seat-map { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 20px 0; }
+        .seat { padding: 15px; background: #e2e8f0; border-radius: 8px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .seat:hover { background: #cbd5e1; }
+        .seat.selected { background: var(--secondary); color: white; transform: scale(1.05); }
+
+        .ticket-box { border: 3px dashed var(--primary); padding: 30px; text-align: center; border-radius: 15px; }
+        .qr-code { width: 120px; height: 120px; background: #333; color: white; margin: 20px auto; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>BiletSistem v1.1</h1>
+</header>
+
+<nav>
+    <button onclick="showSection('organizer')">1. Tədbir Yarat</button>
+    <button onclick="showSection('events')">2. Bilet Al</button>
+    <button onclick="showSection('check')">3. Bilet Yoxla</button>
+</nav>
+
+<div class="container">
+    
+    <!-- 1. Tədbir Yarat -->
+    <section id="organizer">
+        <h2>Təşkilatçı Paneli</h2>
+        <p>Yeni tədbir məlumatlarını daxil edin:</p>
+        <input type="text" id="eventTitle" placeholder="Məs: Qış Konserti">
+        <select id="category">
+            <option value="Standart">Standart - 15 AZN</option>
+            <option value="Premium">Premium - 40 AZN</option>
+            <option value="VIP">VIP - 100 AZN</option>
+        </select>
+        <button class="main-btn" onclick="createEvent()">Tədbiri Dərc Et və Satışa Bax</button>
+    </section>
+
+    <!-- 2. Bilet Alışı -->
+    <section id="events" class="hidden">
+        <h2>Aktiv Satışlar</h2>
+        <div id="eventList">
+            <p style="color: #666;">Hələ heç bir tədbir yaradılmayıb...</p>
+        </div>
+
+        <div id="bookingStep" class="hidden" style="margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px;">
+            <h3>Oturacaq Seçin: <span id="buyingTitle" style="color: var(--primary);"></span></h3>
+            <div class="seat-map" id="seatMap"></div>
+            <button class="main-btn" style="background: var(--secondary);" onclick="processPayment()">Ödənişi Tamamla</button>
+        </div>
+    </section>
+
+    <!-- 3. Uğurlu Bilet -->
+    <section id="ticketResult" class="hidden">
+        <div class="ticket-box">
+            <h2 style="color: var(--secondary);">Təbriklər! Biletiniz Hazırdır.</h2>
+            <h3 id="t-title">---</h3>
+            <p>Oturacaq: <strong id="t-seat">---</strong> | Kateqoriya: <span id="t-cat">---</span></p>
+            <div class="qr-code">QR SKANER</div>
+            <p>Unikal Kod: <strong id="t-code">---</strong></p>
+            <button onclick="showSection('events')" style="background:none; border:none; color: blue; cursor:pointer; text-decoration: underline;">Yenisini al</button>
+        </div>
+    </section>
+
+    <!-- 4. Yoxlanış -->
+    <section id="check" class="hidden">
+        <h2>Bilet Yoxlanışı (Giriş Nəzarəti)</h2>
+        <input type="text" id="checkCode" placeholder="Bilet kodunu (məs: BS-123) daxil edin">
+        <button class="main-btn" onclick="validateTicket()">Yoxla</button>
+        <div id="checkResult" style="margin-top: 20px; font-weight: bold; text-align: center;"></div>
+    </section>
+
+</div>
+
+<script>
+    let events = [];
+    let soldTickets = [];
+    let activeSelection = { title: '', cat: '', seat: null };
+
+    function showSection(id) {
+        document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    function createEvent() {
+        const title = document.getElementById('eventTitle').value;
+        const cat = document.getElementById('category').value;
+        
+        if(!title) { alert("Xahiş olunur tədbir adını yazın!"); return; }
+
+        events.push({ title, cat });
+        updateEventList();
+        showSection('events'); // Avtomatik bilet alma bölməsinə keçir
+    }
+
+    function updateEventList() {
+        const list = document.getElementById('eventList');
+        list.innerHTML = events.map(e => `
+            <div style="background:#f1f5f9; padding:15px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span><strong>${e.title}</strong> (${e.cat})</span>
+                <button onclick="openSeating('${e.title}', '${e.cat}')" style="background:var(--primary); color:white; border:none; padding:8px 15px; border-radius:5px; cursor:pointer;">Seç</button>
+            </div>
+        `).join('');
+    }
+
+    function openSeating(title, cat) {
+        activeSelection.title = title;
+        activeSelection.cat = cat;
+        document.getElementById('buyingTitle').innerText = title;
+        document.getElementById('bookingStep').classList.remove('hidden');
+        
+        const map = document.getElementById('seatMap');
+        map.innerHTML = '';
+        for(let i=1; i<=10; i++) {
+            const s = document.createElement('div');
+            s.className = 'seat';
+            s.innerText = i;
+            s.onclick = function() {
+                document.querySelectorAll('.seat').forEach(el => el.classList.remove('selected'));
+                this.classList.add('selected');
+                activeSelection.seat = i;
+            };
+            map.appendChild(s);
+        }
+    }
+
+    function processPayment() {
+        if(!activeSelection.seat) { alert("Oturacaq seçməmisiniz!"); return; }
+
+        const code = "BS-" + Math.floor(1000 + Math.random() * 9000);
+        const finalTicket = { ...activeSelection, code };
+        soldTickets.push(finalTicket);
+
+        // Nəticəni göstər
+        document.getElementById('t-title').innerText = finalTicket.title;
+        document.getElementById('t-seat').innerText = finalTicket.seat;
+        document.getElementById('t-cat').innerText = finalTicket.cat;
+        document.getElementById('t-code').innerText = code;
+
+        showSection('ticketResult');
+        // Seçimi sıfırla
+        activeSelection.seat = null;
+    }
+
+    function validateTicket() {
+        const input = document.getElementById('checkCode').value.toUpperCase();
+        const ticket = soldTickets.find(t => t.code === input);
+        const res = document.getElementById('checkResult');
+
+        if(ticket) {
+            res.innerHTML = `<span style="color:green;">✅ KEÇƏRLİDİR! <br> Tədbir: ${ticket.title} | Yer: ${ticket.seat}</span>`;
+        } else {
+            res.innerHTML = `<span style="color:red;">❌ TAPILMADI! Kod səhvdir və ya bilet mövcud deyil.</span>`;
+        }
+    }
+</script>
+
+</body>
+</html>
